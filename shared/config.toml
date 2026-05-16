@@ -50,7 +50,7 @@ stddev = 7.5 # standard deviation of the rotation angle distribution around z-ax
 
 # Fracture family 2. Similar to family 1, but with different parameters.
 [sampler.2]
-target_num = 5
+target_num = 7
 type = "disks"
 
 [sampler.2.major_axis_length]
@@ -71,4 +71,29 @@ stddev = 7.5
 
 [sampler.2.rotation_deg.z]
 mean = 20.0
+stddev = 7.5
+
+# Fracture family 2. Similar to family 1, but with different parameters.
+[sampler.3]
+target_num = 10
+type = "disks"
+
+[sampler.3.major_axis_length]
+mean = 50.0
+stddev = 10.0
+
+[sampler.3.minor_axis_length]
+mean = 50.0
+stddev = 5.0
+
+[sampler.3.rotation_deg.x]
+mean = 20.0
+stddev = 7.5
+
+[sampler.3.rotation_deg.y]
+mean = -35.0
+stddev = 7.5
+
+[sampler.3.rotation_deg.z]
+mean = -20.0
 stddev = 7.5
