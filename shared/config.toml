@@ -1,3 +1,4 @@
+# Box domain dimensions.
 [domain]
 xmin = 0.0
 ymin = 0.0
@@ -6,54 +7,68 @@ xmax = 100.0
 ymax = 100.0
 zmax = 100.0
 
-[sampling]
-target_num_disks = 10
-
+# Main constraints supported by Frackit.
 [constraints]
-min_distance = 0.05
-min_intersecting_angle_deg_self = 30.0
-min_intersecting_angle_deg_other = 40.0
-min_intersection_magnitude = 0.05
-min_intersection_distance = 0.05
+min_distance = 0.05 # Minimum distance between fractures.
+min_intersecting_angle_deg_self = 30.0 # Minimum angle between intersecting fractures of the same family.
+min_intersecting_angle_deg_other = 40.0 # Minimum angle between intersecting fractures of different families.
+min_intersection_magnitude = 0.05 # Minimum magnitude of intersection between fractures.
+min_intersection_distance = 0.05 # Minimum distance between non-intersecting fractures.
 
-# Fracture family 1.
-[sampler1.major_axis_length]
+# Fracture properties.
+# Add two fracture families.
+[sampler]
+num = 3
+
+# Family #1.
+# Target 5 disks, with major axis length mean 50 and stddev 10,
+# minor axis length mean 50 and stddev 5, and rotation angles
+# with mean 0 and stddev 7.5 degrees.
+[sampler.1]
+target_num = 5 # number of fractures to sample for this family
+type = "disks" # "disks" or "quads"
+
+[sampler.1.major_axis_length]
+mean = 50.0 # mean of the major axis length distribution
+stddev = 10.0 # standard deviation of the major axis length distribution
+
+[sampler.1.minor_axis_length]
+mean = 50.0 # mean of the minor axis length distribution
+stddev = 5.0 # standard deviation of the minor axis length distribution
+
+[sampler.1.rotation_deg.x]
+mean = 0.0 # mean of the rotation angle distribution around x-axis (in degrees)
+stddev = 7.5 # standard deviation of the rotation angle distribution around x-axis (in degrees)
+
+[sampler.1.rotation_deg.y]
+mean = 0.0 # mean of the rotation angle distribution around y-axis (in degrees)
+stddev = 7.5 # standard deviation of the rotation angle distribution around y-axis (in degrees)
+
+[sampler.1.rotation_deg.z]
+mean = 0.0 # mean of the rotation angle distribution around z-axis (in degrees)
+stddev = 7.5 # standard deviation of the rotation angle distribution around z-axis (in degrees)
+
+# Fracture family 2. Similar to family 1, but with different parameters.
+[sampler.2]
+target_num = 5
+type = "disks"
+
+[sampler.2.major_axis_length]
 mean = 50.0
 stddev = 10.0
 
-[sampler1.minor_axis_length]
+[sampler.2.minor_axis_length]
 mean = 50.0
 stddev = 5.0
 
-[sampler1.rotation_deg.x]
-mean = 0.0
+[sampler.2.rotation_deg.x]
+mean = 90.0
 stddev = 7.5
 
-[sampler1.rotation_deg.y]
-mean = 0.0
+[sampler.2.rotation_deg.y]
+mean = 45.0
 stddev = 7.5
 
-[sampler1.rotation_deg.z]
-mean = 0.0
-stddev = 7.5
-
-# Fracture family 2.
-[sampler2.major_axis_length]
-mean = 50.0
-stddev = 10.0
-
-[sampler2.minor_axis_length]
-mean = 50.0
-stddev = 5.0
-
-[sampler2.rotation_deg.x]
-mean = 0.0
-stddev = 7.5
-
-[sampler2.rotation_deg.y]
-mean = 0.0
-stddev = 7.5
-
-[sampler2.rotation_deg.z]
-mean = 0.0
+[sampler.2.rotation_deg.z]
+mean = 20.0
 stddev = 7.5
