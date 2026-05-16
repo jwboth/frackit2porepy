@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Output files
+shared/*.csv
+shared/*.brep
+shared/*.geo
