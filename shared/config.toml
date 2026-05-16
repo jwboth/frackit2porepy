@@ -1,0 +1,59 @@
+[domain]
+xmin = 0.0
+ymin = 0.0
+zmin = 0.0
+xmax = 100.0
+ymax = 100.0
+zmax = 100.0
+
+[sampling]
+target_num_disks = 10
+
+[constraints]
+min_distance = 0.05
+min_intersecting_angle_deg_self = 30.0
+min_intersecting_angle_deg_other = 40.0
+min_intersection_magnitude = 0.05
+min_intersection_distance = 0.05
+
+# Fracture family 1.
+[sampler1.major_axis_length]
+mean = 50.0
+stddev = 10.0
+
+[sampler1.minor_axis_length]
+mean = 50.0
+stddev = 5.0
+
+[sampler1.rotation_deg.x]
+mean = 0.0
+stddev = 7.5
+
+[sampler1.rotation_deg.y]
+mean = 0.0
+stddev = 7.5
+
+[sampler1.rotation_deg.z]
+mean = 0.0
+stddev = 7.5
+
+# Fracture family 2.
+[sampler2.major_axis_length]
+mean = 50.0
+stddev = 10.0
+
+[sampler2.minor_axis_length]
+mean = 50.0
+stddev = 5.0
+
+[sampler2.rotation_deg.x]
+mean = 0.0
+stddev = 7.5
+
+[sampler2.rotation_deg.y]
+mean = 0.0
+stddev = 7.5
+
+[sampler2.rotation_deg.z]
+mean = 0.0
+stddev = 7.5
