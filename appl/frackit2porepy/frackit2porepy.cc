@@ -4,6 +4,11 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <variant>
+#include <array>
+#include <cmath>
+#include <type_traits>
+#include <memory>
 
 #include <frackit/common/id.hh>
 #include <frackit/io/gmshwriter.hh>
@@ -11,6 +16,9 @@
 #include <frackit/sampling/makeuniformpointsampler.hh>
 #include <frackit/sampling/disksampler.hh>
 #include <frackit/sampling/quadrilateralsampler.hh>
+#include <frackit/sampling/multigeometrysampler.hh>
+#include <frackit/entitynetwork/constraintsmatrix.hh>
+#include <frackit/entitynetwork/multigeometryentityset.hh>
 #include <frackit/sampling/status.hh>
 
 #include <frackit/geometry/quadrilateral.hh>
@@ -22,6 +30,7 @@
 #include "toml.hpp" // Third-party TOML library
 
 using DiskSampler_t = Frackit::DiskSampler<double>;
+using QuadrilateralSampler_t = Frackit::QuadrilateralSampler<3, double>;
 
 namespace
 {
@@ -32,18 +41,32 @@ namespace
         double stddev = 0.0;
     };
 
+    struct UniformParams
+    {
+        double min = 0.0;
+        double max = 1.0;
+    };
+
     struct DomainConfig
     {
         double xmin = 0, ymin = 0, zmin = 0, xmax = 100, ymax = 100, zmax = 100;
     };
 
-    struct SamplerConfig
+    struct DiskSamplerConfig
     {
         NormalParams major_axis_length{50.0, 10.0};
         NormalParams minor_axis_length{50.0, 5.0};
         NormalParams rot_x_deg{0.0, 7.5};
         NormalParams rot_y_deg{0.0, 7.5};
         NormalParams rot_z_deg{0.0, 7.5};
+    };
+
+    struct QuadSamplerConfig
+    {
+        NormalParams strike_deg{0.0, 7.5};
+        NormalParams dip_deg{0.0, 7.5};
+        UniformParams strike_length{50.0, 10.0};
+        UniformParams dip_length{50.0, 5.0};
     };
 
     struct ConstraintsConfig
@@ -55,17 +78,20 @@ namespace
         double min_intersection_distance = 0.05;
     };
 
-    struct OutputConfig
-    {
-        std::string disks_csv = "disks.csv";
-        std::string families_csv = "families.csv";
-    };
+    using AnySamplerConfig = std::variant<DiskSamplerConfig, QuadSamplerConfig>;
 
     struct FamilyConfig
     {
         int target_num = 5;
-        std::string type = "disks"; // "disks" or "quads" (quads not supported yet)
-        SamplerConfig sampler{};
+        std::string type = "disks";                     // "disks" or "quads"
+        AnySamplerConfig sampler = DiskSamplerConfig{}; // default matches default type
+    };
+
+    struct OutputConfig
+    {
+        std::string disks_csv = "disks.csv";
+        std::string quads_csv = "quads.csv";
+        std::string families_csv = "families.csv";
     };
 
     struct Config
@@ -91,16 +117,36 @@ namespace
                 const auto &f = cfg.families[i];
                 std::cout << "[config] sampler." << idx << ".type=\"" << f.type << "\"\n";
                 std::cout << "[config] sampler." << idx << ".target_num=" << f.target_num << "\n";
-                std::cout << "[config] sampler." << idx << ".major_axis_length.mean=" << f.sampler.major_axis_length.mean << "\n";
-                std::cout << "[config] sampler." << idx << ".major_axis_length.stddev=" << f.sampler.major_axis_length.stddev << "\n";
-                std::cout << "[config] sampler." << idx << ".minor_axis_length.mean=" << f.sampler.minor_axis_length.mean << "\n";
-                std::cout << "[config] sampler." << idx << ".minor_axis_length.stddev=" << f.sampler.minor_axis_length.stddev << "\n";
-                std::cout << "[config] sampler." << idx << ".rot_x_deg.mean=" << f.sampler.rot_x_deg.mean << "\n";
-                std::cout << "[config] sampler." << idx << ".rot_x_deg.stddev=" << f.sampler.rot_x_deg.stddev << "\n";
-                std::cout << "[config] sampler." << idx << ".rot_y_deg.mean=" << f.sampler.rot_y_deg.mean << "\n";
-                std::cout << "[config] sampler." << idx << ".rot_y_deg.stddev=" << f.sampler.rot_y_deg.stddev << "\n";
-                std::cout << "[config] sampler." << idx << ".rot_z_deg.mean=" << f.sampler.rot_z_deg.mean << "\n";
-                std::cout << "[config] sampler." << idx << ".rot_z_deg.stddev=" << f.sampler.rot_z_deg.stddev << "\n\n";
+                std::visit(
+                    [&](const auto &s)
+                    {
+                        using T = std::decay_t<decltype(s)>;
+                        if constexpr (std::is_same_v<T, DiskSamplerConfig>)
+                        {
+                            std::cout << "[config] sampler." << idx << ".major_axis_length.mean=" << s.major_axis_length.mean << "\n";
+                            std::cout << "[config] sampler." << idx << ".major_axis_length.stddev=" << s.major_axis_length.stddev << "\n";
+                            std::cout << "[config] sampler." << idx << ".minor_axis_length.mean=" << s.minor_axis_length.mean << "\n";
+                            std::cout << "[config] sampler." << idx << ".minor_axis_length.stddev=" << s.minor_axis_length.stddev << "\n";
+                            std::cout << "[config] sampler." << idx << ".rot_x_deg.mean=" << s.rot_x_deg.mean << "\n";
+                            std::cout << "[config] sampler." << idx << ".rot_x_deg.stddev=" << s.rot_x_deg.stddev << "\n";
+                            std::cout << "[config] sampler." << idx << ".rot_y_deg.mean=" << s.rot_y_deg.mean << "\n";
+                            std::cout << "[config] sampler." << idx << ".rot_y_deg.stddev=" << s.rot_y_deg.stddev << "\n";
+                            std::cout << "[config] sampler." << idx << ".rot_z_deg.mean=" << s.rot_z_deg.mean << "\n";
+                            std::cout << "[config] sampler." << idx << ".rot_z_deg.stddev=" << s.rot_z_deg.stddev << "\n\n";
+                        }
+                        else if constexpr (std::is_same_v<T, QuadSamplerConfig>)
+                        {
+                            std::cout << "[config] sampler." << idx << ".strike_deg.mean=" << s.strike_deg.mean << "\n";
+                            std::cout << "[config] sampler." << idx << ".strike_deg.stddev=" << s.strike_deg.stddev << "\n";
+                            std::cout << "[config] sampler." << idx << ".dip_deg.mean=" << s.dip_deg.mean << "\n";
+                            std::cout << "[config] sampler." << idx << ".dip_deg.stddev=" << s.dip_deg.stddev << "\n";
+                            std::cout << "[config] sampler." << idx << ".strike_length.min=" << s.strike_length.min << "\n";
+                            std::cout << "[config] sampler." << idx << ".strike_length.max=" << s.strike_length.max << "\n";
+                            std::cout << "[config] sampler." << idx << ".dip_length.min=" << s.dip_length.min << "\n";
+                            std::cout << "[config] sampler." << idx << ".dip_length.max=" << s.dip_length.max << "\n\n";
+                        }
+                    },
+                    f.sampler);
             }
         }
 
@@ -135,7 +181,7 @@ namespace
                 cfg.domain.zmax = (*domain)["zmax"].value_or(cfg.domain.zmax);
             }
 
-            auto loadSamplerFromTable = [](const toml::table &st, SamplerConfig &s)
+            auto loadDiskSamplerFromTable = [](const toml::table &st, DiskSamplerConfig &s)
             {
                 if (const auto *maj = st["major_axis_length"].as_table())
                 {
@@ -168,6 +214,30 @@ namespace
                 }
             };
 
+            auto loadQuadSamplerFromTable = [](const toml::table &st, QuadSamplerConfig &s)
+            {
+                if (const auto *strike = st["strike_deg"].as_table())
+                {
+                    s.strike_deg.mean = (*strike)["mean"].value_or(s.strike_deg.mean);
+                    s.strike_deg.stddev = (*strike)["stddev"].value_or(s.strike_deg.stddev);
+                }
+                if (const auto *dip = st["dip_deg"].as_table())
+                {
+                    s.dip_deg.mean = (*dip)["mean"].value_or(s.dip_deg.mean);
+                    s.dip_deg.stddev = (*dip)["stddev"].value_or(s.dip_deg.stddev);
+                }
+                if (const auto *sl = st["strike_length"].as_table())
+                {
+                    s.strike_length.min = (*sl)["min"].value_or(s.strike_length.min);
+                    s.strike_length.max = (*sl)["max"].value_or(s.strike_length.max);
+                }
+                if (const auto *dl = st["dip_length"].as_table())
+                {
+                    s.dip_length.min = (*dl)["min"].value_or(s.dip_length.min);
+                    s.dip_length.max = (*dl)["max"].value_or(s.dip_length.max);
+                }
+            };
+
             if (const auto *sampler = tbl["sampler"].as_table())
             {
                 const int num = (*sampler)["num"].value_or(0);
@@ -187,7 +257,23 @@ namespace
 
                         f.target_num = (*ft)["target_num"].value_or(f.target_num);
                         f.type = (*ft)["type"].value_or(f.type);
-                        loadSamplerFromTable(*ft, f.sampler);
+
+                        if (f.type == "disks")
+                        {
+                            DiskSamplerConfig s{};
+                            loadDiskSamplerFromTable(*ft, s);
+                            f.sampler = s;
+                        }
+                        else if (f.type == "quads")
+                        {
+                            QuadSamplerConfig s{};
+                            loadQuadSamplerFromTable(*ft, s);
+                            f.sampler = s;
+                        }
+                        else
+                        {
+                            throw std::runtime_error("Unsupported sampler type in TOML: " + f.type);
+                        }
                     }
                 }
             }
@@ -208,6 +294,7 @@ namespace
             if (const auto *o = tbl["output"].as_table())
             {
                 cfg.output.disks_csv = (*o)["disks_csv"].value_or(cfg.output.disks_csv);
+                cfg.output.quads_csv = (*o)["quads_csv"].value_or(cfg.output.quads_csv);
                 cfg.output.families_csv = (*o)["families_csv"].value_or(cfg.output.families_csv);
             }
         }
@@ -342,10 +429,6 @@ int main(int argc, char **argv)
     // Define the type used for coordinates
     using ctype = double;
 
-    // Internal geometry type for 3d quadrilaterals
-    // using Quad = Quadrilateral<ctype, worldDimension>;
-    using Disk = Disk<ctype>;
-
     // Define a domain (here: unit cube) in which the quadrilaterals should be created.
     // Boxes are created by providing xmin, ymin, zmin and xmax, ymax and zmax in constructor.
     Box<ctype> domain(cfg.domain.xmin, cfg.domain.ymin, cfg.domain.zmin,
@@ -362,7 +445,7 @@ int main(int argc, char **argv)
     using NormalDistro = std::normal_distribution<ctype>;
     using UniformDistro = std::uniform_real_distribution<ctype>;
 
-    auto makeDiskSamplerFromCfg = [&](const SamplerConfig &sc)
+    auto makeDiskSamplerFromCfg = [&](const DiskSamplerConfig &sc)
     {
         return DiskSampler_t(
             pointSampler,
@@ -373,118 +456,133 @@ int main(int argc, char **argv)
             NormalDistro(toRadians(sc.rot_z_deg.mean), toRadians(sc.rot_z_deg.stddev)));
     };
 
-    struct RuntimeFamily
+    auto makeQuadSamplerFromCfg = [&](const QuadSamplerConfig &sc)
     {
-        Id id;
-        int familyIndex; // 1-based
-        int target_num;
-        std::string type;
-        DiskSampler_t sampler;
-
-        RuntimeFamily(Id i, int idx, int target, std::string t, DiskSampler_t s)
-            : id(i), familyIndex(idx), target_num(target), type(std::move(t)), sampler(std::move(s)) {}
+        return QuadrilateralSampler_t(
+            pointSampler,
+            NormalDistro(toRadians(sc.strike_deg.mean), toRadians(sc.strike_deg.stddev)),
+            NormalDistro(toRadians(sc.dip_deg.mean), toRadians(sc.dip_deg.stddev)),
+            UniformDistro(sc.strike_length.min, sc.strike_length.max),
+            UniformDistro(sc.dip_length.min, sc.dip_length.max));
     };
 
-    std::vector<RuntimeFamily> families;
+    // Central sampler
+    using Disk = Disk<ctype>;
+    using Quad = Quadrilateral<ctype, worldDimension>;
+    MultiGeometrySampler<Disk, Quad> multiSampler;
 
-    if (!cfg.families.empty())
+    // Central status
+    SamplingStatus status;
+    for (std::size_t i = 0; i < cfg.families.size(); ++i)
     {
-        families.reserve(cfg.families.size());
-        for (std::size_t i = 0; i < cfg.families.size(); ++i)
+        const auto &fam = cfg.families[i];
+        const Id familyId(static_cast<int>(i + 1));
+
+        status.setTargetCount(familyId, fam.target_num);
+
+        if (fam.type == "disks")
         {
-            const auto &f = cfg.families[i];
-            const int familyIndex = static_cast<int>(i + 1);
+            const auto sc = std::get<DiskSamplerConfig>(fam.sampler);
+            auto diskSampler = makeDiskSamplerFromCfg(sc);
+            multiSampler.addGeometrySampler(diskSampler, familyId);
+        }
+        else if (fam.type == "quads")
+        {
+            const auto sc = std::get<QuadSamplerConfig>(fam.sampler);
+            auto quadSampler = makeQuadSamplerFromCfg(sc);
+            multiSampler.addGeometrySampler(quadSampler, familyId);
+        }
+        else
+            throw std::runtime_error("Unsupported family type: " + fam.type);
+    }
 
-            if (f.type != "disks")
-                throw std::runtime_error(
-                    "Only type=\"disks\" is supported right now "
-                    "(requested: type=\"" +
-                    f.type + "\" in sampler." + std::to_string(familyIndex) + ")");
+    // We want to enforce some constraints.
+    // In particular, for entities of the same set we want a minimum spacing
+    // distance, and the entities must not intersect in angles
+    // less than given value. Moreover, if they intersect, we don't want intersection
+    // edges whose length is smaller than given value, and, the intersection should not
+    // be too close to the boundary of one of two intersecting entities.
+    using Constraints = EntityNetworkConstraints<ctype>;
+    Constraints cSelf;
+    cSelf.setMinDistance(cfg.constraints.min_distance);
+    cSelf.setMinIntersectingAngle(toRadians(cfg.constraints.min_intersecting_angle_deg_self));
+    cSelf.setMinIntersectionMagnitude(cfg.constraints.min_intersection_magnitude);
+    cSelf.setMinIntersectionDistance(cfg.constraints.min_intersection_distance);
 
-            const int target = (argc > 1) ? std::stoi(argv[1]) : f.target_num;
-            families.emplace_back(Id(familyIndex), familyIndex, target, f.type, makeDiskSamplerFromCfg(f.sampler));
+    Constraints cOther = cSelf;
+    cOther.setMinIntersectingAngle(toRadians(cfg.constraints.min_intersecting_angle_deg_other));
+    cOther.setMinIntersectionMagnitude(cfg.constraints.min_intersection_magnitude);
+    cOther.setMinIntersectionDistance(cfg.constraints.min_intersection_distance);
+
+    EntityNetworkConstraintsMatrix<Constraints> constraintsMatrix;
+
+    // Self constraints for each family
+    for (std::size_t i = 0; i < cfg.families.size(); ++i)
+    {
+        const Id id(static_cast<int>(i + 1));
+        constraintsMatrix.addConstraints(cSelf, IdPair(id, id));
+    }
+
+    // Cross constraints for each ordered pair i != j
+    for (std::size_t i = 0; i < cfg.families.size(); ++i)
+    {
+        for (std::size_t j = 0; j < cfg.families.size(); ++j)
+        {
+            if (i == j)
+                continue;
+            constraintsMatrix.addConstraints(cOther, IdPair(Id(i + 1), Id(j + 1)));
         }
     }
-    else
-    {
-        // throw runtime error
-        throw std::runtime_error("No fracture families defined in configuration.");
-    }
-
-    // We want to enforce some constraints on the set of quadrilaterals.
-    // In particular, for entities of the same set we want a minimum spacing
-    // distance of 5cm, and the quadrilaterals must not intersect in angles
-    // less than 30°. Moreover, if they intersect, we don't want intersection
-    // edges whose length is smaller than 5cm, and, the intersection should not
-    // be too close to the boundary of one of two intersecting quadrilaterals. Here: 5cm.
-    EntityNetworkConstraints<ctype> constraintsOnSelf;
-    constraintsOnSelf.setMinDistance(cfg.constraints.min_distance);
-    constraintsOnSelf.setMinIntersectingAngle(toRadians(cfg.constraints.min_intersecting_angle_deg_self));
-    constraintsOnSelf.setMinIntersectionMagnitude(cfg.constraints.min_intersection_magnitude);
-    constraintsOnSelf.setMinIntersectionDistance(cfg.constraints.min_intersection_distance);
-
-    // with respect to entities of the other set, we want to have larger intersection angles
-    auto constraintsOnOther = constraintsOnSelf;
-    constraintsOnOther.setMinIntersectingAngle(toRadians(cfg.constraints.min_intersecting_angle_deg_other));
 
     // initialize empty fracture families
-    std::vector<std::vector<Disk>> entitySets(families.size());
-
-    SamplingStatus status;
-    for (const auto &f : families)
-        status.setTargetCount(f.id, f.target_num);
+    MultiGeometryEntitySet<Disk, Quad> entitySets;
 
     std::cout << "\n --- Start entity sampling ---\n"
               << std::endl;
-    std::size_t nextFamily = 0; // start with first, and use round-robin to sample from the different families.
-    // This is not strictly necessary, but it allows to sample from all families in parallel and thus better enforce constraints between families.
+
+    // Keep track of accepted entities
+    std::vector<std::shared_ptr<Disk>> acceptedDisks;
+    std::vector<std::shared_ptr<Quad>> acceptedQuads;
+
     while (!status.finished())
     {
-        auto &fam = families[nextFamily];
-        auto &entitySet = entitySets[nextFamily];
+        Id id;
+        auto geom = multiSampler(id);
 
-        // Hard cap per family: don't sample more once target reached
-        if (static_cast<int>(entitySet.size()) >= fam.target_num)
+        if (status.finished(id))
         {
-            nextFamily = (nextFamily + 1) % families.size();
+            status.increaseRejectedCounter("set finished");
             continue;
         }
 
-        auto disk = fam.sampler();
-
-        if (!constraintsOnSelf.evaluate(entitySet, disk))
+        // constraints vs entities across all sets
+        if (const auto res = constraintsMatrix.evaluate(entitySets, geom, id); res.violationDetected())
         {
-            status.increaseRejectedCounter();
-            nextFamily = (nextFamily + 1) % families.size();
+            status.increaseRejectedCounter(res.violationLabel());
             continue;
         }
 
-        bool okOther = true;
-        for (std::size_t j = 0; j < entitySets.size(); ++j)
-        {
-            if (j == nextFamily)
-                continue;
-            if (!constraintsOnOther.evaluate(entitySets[j], disk))
-            {
-                okOther = false;
-                break;
-            }
-        }
+        entitySets.addEntity(geom, id);
 
-        if (!okOther)
+        // store for CSV output (and metadata)
+        if (auto d = std::dynamic_pointer_cast<Disk>(geom))
         {
-            status.increaseRejectedCounter();
-            nextFamily = (nextFamily + 1) % families.size();
+            acceptedDisks.push_back(d);
+        }
+        else if (auto q = std::dynamic_pointer_cast<Quad>(geom))
+        {
+            acceptedQuads.push_back(q);
+        }
+        else
+        {
+            status.increaseRejectedCounter("unknown geometry type");
             continue;
         }
 
-        entitySet.push_back(disk);
-
-        status.increaseCounter(fam.id);
+        status.increaseCounter(id);
         status.print();
-
-        nextFamily = (nextFamily + 1) % families.size();
     }
+
     std::cout << "\n --- Finished entity sampling ---\n"
               << std::endl;
 
@@ -514,57 +612,76 @@ int main(int argc, char **argv)
     }
     */
 
-    // PorePy CSV format:
-    std::ofstream out(cfg.output.disks_csv);
+    // PorePy CSV format for disks:
+    std::ofstream out_disks(cfg.output.disks_csv);
 
     // Start with the domain.
     // out << "DOMAIN_XMIN, DOMAIN_YMIN, DOMAIN_ZMIN, DOMAIN_XMAX, DOMAIN_YMAX, DOMAIN_ZMAX\n";
-    out << cfg.domain.xmin << "," << cfg.domain.ymin << "," << cfg.domain.zmin << ","
-        << cfg.domain.xmax << "," << cfg.domain.ymax << "," << cfg.domain.zmax << "\n";
+    out_disks << cfg.domain.xmin << "," << cfg.domain.ymin << "," << cfg.domain.zmin << ","
+              << cfg.domain.xmax << "," << cfg.domain.ymax << "," << cfg.domain.zmax << "\n";
 
     // Now add the disks in the following format.
     // out << "CENTER_X, CENTER_X, CENTER_Y, CENTER_Z, MAJOR_AXIS, MINOR_AXIS, MAJOR_AXIS_ANGLE, STRIKE_ANGLE, DIP_ANGLE
 
-    for (std::size_t i = 0; i < entitySets.size(); ++i)
+    for (const auto &disk : acceptedDisks)
     {
-        const int family = families[i].familyIndex;
-        for (const auto &disk : entitySets[i])
-        {
-            const auto c = disk.center();
-            const auto n = disk.normal();
-            const auto maj = disk.majorAxis();
-            const auto min = disk.minorAxis();
+        const auto c = disk->center();
+        const auto n = disk->normal();
+        const auto maj = disk->majorAxis();
 
-            Vec3 n3{n.x(), n.y(), n.z()};
-            Vec3 a3{maj.x(), maj.y(), maj.z()};
+        Vec3 n3{n.x(), n.y(), n.z()};
+        Vec3 a3{maj.x(), maj.y(), maj.z()};
 
-            auto [major_axis_angle, strike_angle, dip_angle] = toPorePyAngles(a3, n3);
+        auto [major_axis_angle, strike_angle, dip_angle] = toPorePyAngles(a3, n3);
 
-            out << c.x() << "," << c.y() << "," << c.z() << ","
-                << disk.majorAxisLength() * 0.5 << ","
-                << disk.minorAxisLength() * 0.5 << ","
-                << major_axis_angle << "," << strike_angle << "," << dip_angle << "\n";
-        }
+        out_disks << c.x() << "," << c.y() << "," << c.z() << ","
+                  << disk->majorAxisLength() * 0.5 << ","
+                  << disk->minorAxisLength() * 0.5 << ","
+                  << major_axis_angle << "," << strike_angle << "," << dip_angle << "\n";
+    }
+
+    // PorePy CSV format for quadrilaterals.
+    std::ofstream out_quads(cfg.output.quads_csv);
+
+    // Start with the domain.
+    // out << "DOMAIN_XMIN, DOMAIN_YMIN, DOMAIN_ZMIN, DOMAIN_XMAX, DOMAIN_YMAX, DOMAIN_ZMAX\n";
+    out_quads << cfg.domain.xmin << "," << cfg.domain.ymin << "," << cfg.domain.zmin << ","
+              << cfg.domain.xmax << "," << cfg.domain.ymax << "," << cfg.domain.zmax << "\n";
+
+    // Now add the disks in the following format (one line per fracture).
+    // out << P0_X, P0_Y, P0_Z, ..., PN_X, PN_Y, PN_Z
+
+    for (const auto &quad : acceptedQuads)
+    {
+        const auto p0 = quad->corner(0);
+        const auto p1 = quad->corner(1);
+        const auto p2 = quad->corner(2);
+        const auto p3 = quad->corner(3);
+
+        out_quads << p0.x() << "," << p0.y() << "," << p0.z() << ","
+                  << p1.x() << "," << p1.y() << "," << p1.z() << ","
+                  << p2.x() << "," << p2.y() << "," << p2.z() << ","
+                  << p3.x() << "," << p3.y() << "," << p3.z() << "\n";
     }
 
     // Also write some metadata about the families to a separate file (optional, but can be useful for later reference)
     std::ofstream meta_out(cfg.output.families_csv);
-    meta_out << "family_id,target_num,sampled_num\n";
-    for (std::size_t i = 0; i < entitySets.size(); ++i)
+    meta_out << "family_id,type,target_num,sampled_num\n";
+    for (std::size_t i = 0; i < cfg.families.size(); ++i)
     {
-        const auto &fam = families[i];
-        meta_out << fam.familyIndex << "," << fam.target_num << "," << entitySets[i].size() << "\n";
+        const auto &fam = cfg.families[i];
+        meta_out << (i + 1) << "," << fam.type << "," << fam.target_num << "," << status.getCount(Id(static_cast<int>(i + 1))) << "\n";
     }
 
     // Write to monitor how many entities were sampled.
-    for (std::size_t i = 0; i < entitySets.size(); ++i)
-        std::cout << "[monitor] Sampled entities (Family " << families[i].familyIndex << "): " << entitySets[i].size() << "\n";
+    for (std::size_t i = 0; i < cfg.families.size(); ++i)
+        std::cout << "[monitor] Sampled entities (Family " << (i + 1)
+                  << " with type " << cfg.families[i].type << "): "
+                  << status.getCount(Id(static_cast<int>(i + 1))) << "\n";
 
     // We can now create an entity network from the two sets
     EntityNetworkBuilder<ctype> builder;
-    for (const auto &set : entitySets)
-        builder.addEntities(set);
-
+    entitySets.exportEntitySets(builder);
     const auto network = builder.build();
 
     // This can be written out in Gmsh (.geo) format to be
