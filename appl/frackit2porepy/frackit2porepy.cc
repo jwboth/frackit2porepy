@@ -97,6 +97,7 @@ namespace
     struct Config
     {
         DomainConfig domain{};
+        DomainConfig subdomain{};
         ConstraintsConfig constraints{};
         std::vector<FamilyConfig> families{};
         OutputConfig output{};
@@ -106,6 +107,8 @@ namespace
     {
         std::cout << "\n[config] domain: [" << cfg.domain.xmin << ", " << cfg.domain.ymin << ", " << cfg.domain.zmin
                   << "] -> [" << cfg.domain.xmax << ", " << cfg.domain.ymax << ", " << cfg.domain.zmax << "]\n";
+        std::cout << "\n[config] subdomain: [" << cfg.subdomain.xmin << ", " << cfg.subdomain.ymin << ", " << cfg.subdomain.zmin
+                  << "] -> [" << cfg.subdomain.xmax << ", " << cfg.subdomain.ymax << ", " << cfg.subdomain.zmax << "]\n";
         if (cfg.families.empty())
             std::cout << "[config] sampler.num=0\n";
         else
@@ -179,6 +182,21 @@ namespace
                 cfg.domain.xmax = (*domain)["xmax"].value_or(cfg.domain.xmax);
                 cfg.domain.ymax = (*domain)["ymax"].value_or(cfg.domain.ymax);
                 cfg.domain.zmax = (*domain)["zmax"].value_or(cfg.domain.zmax);
+            }
+            if (const auto *subdomain = tbl["subdomain"].as_table())
+            {
+                cfg.subdomain.xmin = (*subdomain)["xmin"].value_or(cfg.subdomain.xmin);
+                cfg.subdomain.ymin = (*subdomain)["ymin"].value_or(cfg.subdomain.ymin);
+                cfg.subdomain.zmin = (*subdomain)["zmin"].value_or(cfg.subdomain.zmin);
+                cfg.subdomain.xmax = (*subdomain)["xmax"].value_or(cfg.subdomain.xmax);
+                cfg.subdomain.ymax = (*subdomain)["ymax"].value_or(cfg.subdomain.ymax);
+                cfg.subdomain.zmax = (*subdomain)["zmax"].value_or(cfg.subdomain.zmax);
+            }
+
+            if (!(cfg.domain.xmin <= cfg.subdomain.xmin && cfg.domain.ymin <= cfg.subdomain.ymin && cfg.domain.zmin <= cfg.subdomain.zmin &&
+                  cfg.domain.xmax >= cfg.subdomain.xmax && cfg.domain.ymax >= cfg.subdomain.ymax && cfg.domain.zmax >= cfg.subdomain.zmax))
+            {
+                throw std::runtime_error("Subdomain must be contained within the domain.");
             }
 
             auto loadDiskSamplerFromTable = [](const toml::table &st, DiskSamplerConfig &s)
@@ -429,14 +447,19 @@ int main(int argc, char **argv)
     // Define the type used for coordinates
     using ctype = double;
 
-    // Define a domain (here: unit cube) in which the quadrilaterals should be created.
+    // Define a domain (here: unit cube) in which the subdomain lives.
     // Boxes are created by providing xmin, ymin, zmin and xmax, ymax and zmax in constructor.
     Box<ctype> domain(cfg.domain.xmin, cfg.domain.ymin, cfg.domain.zmin,
                       cfg.domain.xmax, cfg.domain.ymax, cfg.domain.zmax);
 
+    // Define a subdomain (here: unit cube) in which the fractures should be created.
+    // Boxes are created by providing xmin, ymin, zmin and xmax, ymax and zmax in constructor.
+    Box<ctype> subdomain(cfg.subdomain.xmin, cfg.subdomain.ymin, cfg.subdomain.zmin,
+                         cfg.subdomain.xmax, cfg.subdomain.ymax, cfg.subdomain.zmax);
+
     // We now create a sampler instance that uniformly samples points within this box.
     // These points will be used as the quadrilateral centers.
-    auto pointSampler = makeUniformPointSampler(domain);
+    auto pointSampler = makeUniformPointSampler(subdomain);
 
     // Sampler class for quadrilaterals. Per default, this uses uniform distributions
     // for all parameters defining the quadrilaterals. Quadrilateral samplers require

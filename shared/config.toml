@@ -1,24 +1,32 @@
 # Box domain dimensions.
 [domain]
-xmin = 0.0
-ymin = 0.0
-zmin = 0.0
-xmax = 100.0
-ymax = 100.0
-zmax = 100.0
+xmin = -500.0
+ymin = -500.0
+zmin = -3000.0
+xmax = 500.0
+ymax = 500.0
+zmax = -2000.0
+
+# Box subdomain dimensions (for fractures)
+[subdomain]
+xmin = -50.0
+ymin = -50.0
+zmin = -2550.0
+xmax = 50.0
+ymax = 50.0
+zmax = -2450.0
 
 # Main constraints supported by Frackit.
 [constraints]
-min_distance = 0.05 # Minimum distance between fractures.
+min_distance = 5 # Minimum distance between fractures.
 min_intersecting_angle_deg_self = 30.0 # Minimum angle between intersecting fractures of the same family.
 min_intersecting_angle_deg_other = 40.0 # Minimum angle between intersecting fractures of different families.
-min_intersection_magnitude = 0.05 # Minimum magnitude of intersection between fractures.
-min_intersection_distance = 0.05 # Minimum distance between non-intersecting fractures.
+min_intersection_magnitude = 5 # Minimum magnitude of intersection between fractures.
+min_intersection_distance = 5 # Minimum distance between non-intersecting fractures.
 
 # Fracture properties.
-# Add two fracture families.
 [sampler]
-num = 3
+num = 3 # number of fracture families to sample. Each family is defined in a section [sampler.i], where i is the family index starting from 1.
 
 # Family #1.
 # Target 5 disks, with major axis length mean 50 and stddev 10,
