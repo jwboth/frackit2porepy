@@ -221,3 +221,6 @@ __marimo__/
 shared/*.csv
 shared/*.brep
 shared/*.geo
+*.geo_unrolled*
+*.msh*
+visualization/*
