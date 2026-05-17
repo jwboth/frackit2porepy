@@ -16,7 +16,7 @@ cd frackit/build/appl/frackit2porepy/
 "$BIN" "$@"
 
 # Copy known outputs back to shared folder (if they exist)
-for f in disks.csv network.brep network.geo; do
+for f in families.csv disks.csv network.brep network.geo; do
   if [[ -f "$f" ]]; then
     echo "[entrypoint] Exporting $f -> ${SHARED_DIR}/$f"
     cp -f "$f" "${SHARED_DIR}/"

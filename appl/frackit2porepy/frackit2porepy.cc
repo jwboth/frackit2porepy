@@ -58,6 +58,7 @@ namespace
     struct OutputConfig
     {
         std::string disks_csv = "disks.csv";
+        std::string families_csv = "families.csv";
     };
 
     struct FamilyConfig
@@ -109,6 +110,7 @@ namespace
         std::cout << "[config] constraints.min_intersection_magnitude=" << cfg.constraints.min_intersection_magnitude << "\n";
         std::cout << "[config] constraints.min_intersection_distance=" << cfg.constraints.min_intersection_distance << "\n";
         std::cout << "[config] output.disks_csv=\"" << cfg.output.disks_csv << "\"\n";
+        std::cout << "[config] output.families_csv=\"" << cfg.output.families_csv << "\"\n";
     }
 
     static void tryLoadToml(const std::string &path, Config &cfg)
@@ -204,7 +206,10 @@ namespace
             }
 
             if (const auto *o = tbl["output"].as_table())
+            {
                 cfg.output.disks_csv = (*o)["disks_csv"].value_or(cfg.output.disks_csv);
+                cfg.output.families_csv = (*o)["families_csv"].value_or(cfg.output.families_csv);
+            }
         }
         catch (const toml::parse_error &err)
         {
@@ -213,6 +218,113 @@ namespace
     }
 
 } // namespace
+
+// Helpers for conversion to PorePy format
+
+using Vec3 = std::array<double, 3>;
+
+auto dot = [](const Vec3 &a, const Vec3 &b)
+{
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+};
+
+auto cross = [](const Vec3 &a, const Vec3 &b) -> Vec3
+{
+    return {
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]};
+};
+
+auto norm = [&](const Vec3 &v)
+{
+    return std::sqrt(dot(v, v));
+};
+
+auto normalize = [&](const Vec3 &v) -> Vec3
+{
+    const double n = norm(v);
+    if (n < 1e-14)
+        throw std::runtime_error("normalize(): zero-length vector");
+    return {v[0] / n, v[1] / n, v[2] / n};
+};
+
+auto wrap_0_2pi = [](double a)
+{
+    constexpr double two_pi = 2.0 * M_PI;
+    a = std::fmod(a, two_pi);
+    if (a < 0.0)
+        a += two_pi;
+    return a;
+};
+
+// Rodrigues rotation of a vector around an axis
+auto rotate_about_axis = [&](const Vec3 &v, const Vec3 &axis_raw, double theta) -> Vec3
+{
+    const Vec3 u = normalize(axis_raw);
+    const double c = std::cos(theta);
+    const double s = std::sin(theta);
+    const Vec3 uxv = cross(u, v);
+    const double udv = dot(u, v);
+
+    return {
+        v[0] * c + uxv[0] * s + u[0] * udv * (1.0 - c),
+        v[1] * c + uxv[1] * s + u[1] * udv * (1.0 - c),
+        v[2] * c + uxv[2] * s + u[2] * udv * (1.0 - c)};
+};
+
+auto toPorePyAngles = [&](Vec3 major_axis_dir, Vec3 normal_dir)
+{
+    // Normalize inputs
+    Vec3 a = normalize(major_axis_dir);
+    Vec3 n = normalize(normal_dir);
+
+    // Enforce upward normal for consistency
+    if (n[2] < 0.0)
+    {
+        n = {-n[0], -n[1], -n[2]};
+        a = {-a[0], -a[1], -a[2]}; // keep in-plane orientation consistent
+    }
+
+    // Dip: rotation around strike axis (radians)
+    const double dip = std::acos(std::max(-1.0, std::min(1.0, n[2])));
+
+    // Strike direction = cross(k, n) (horizontal), k=(0,0,1)
+    Vec3 strike_dir = {-n[1], n[0], 0.0};
+    const double s_norm = norm(strike_dir);
+
+    double strike = 0.0;
+    if (s_norm > 1e-12)
+    {
+        strike_dir = {strike_dir[0] / s_norm, strike_dir[1] / s_norm, 0.0};
+
+        // Canonicalize to reduce flips (optional)
+        if (strike_dir[1] < 0.0)
+        {
+            strike_dir = {-strike_dir[0], -strike_dir[1], 0.0};
+        }
+
+        // PorePy strike angle: clockwise from +y (north)
+        // strike_dir = (sin(strike), cos(strike), 0)
+        strike = std::atan2(strike_dir[0], strike_dir[1]);
+        strike = wrap_0_2pi(strike);
+    }
+
+    // Strike axis as PorePy uses it
+    const Vec3 strike_axis = {std::sin(strike), std::cos(strike), 0.0};
+
+    // Undo the dip tilt to recover the pre-strike-dip in-plane major axis direction
+    Vec3 a0 = a;
+    if (dip > 1e-14)
+    {
+        a0 = rotate_about_axis(a, strike_axis, -dip);
+    }
+
+    // Major axis angle: rotation from +x in the XY plane before strike-dip
+    const double major_axis_angle = wrap_0_2pi(std::atan2(a0[1], a0[0]));
+
+    return std::tuple<double, double, double>{major_axis_angle, strike, dip};
+};
 
 //! create a network of 3d quadrilaterals
 int main(int argc, char **argv)
@@ -376,8 +488,9 @@ int main(int argc, char **argv)
     std::cout << "\n --- Finished entity sampling ---\n"
               << std::endl;
 
+    // Native Frackit CSV format:
+    /*
     std::ofstream out(cfg.output.disks_csv);
-
     out << "family,cx,cy,cz,majx,majy,majz,minx,miny,minz,majR,minR,nx,ny,nz\n";
 
     for (std::size_t i = 0; i < entitySets.size(); ++i)
@@ -399,28 +512,49 @@ int main(int argc, char **argv)
                 << "\n";
         }
     }
+    */
 
-    // auto dumpSet = [&](const std::vector<Disk> &set, int family)
-    // {
-    //     for (const auto &disk : set)
-    //     {
-    //         const auto c = disk.center();
-    //         const auto n = disk.normal();
-    //         const auto maj = disk.majorAxis();
-    //         const auto min = disk.minorAxis();
-    //         out << family << ","
-    //             << c.x() << "," << c.y() << "," << c.z() << ","
-    //             << maj.x() << "," << maj.y() << "," << maj.z() << ","
-    //             << min.x() << "," << min.y() << "," << min.z() << ","
-    //             << disk.majorAxisLength() * 0.5 << ","
-    //             << disk.minorAxisLength() * 0.5 << ","
-    //             << n.x() << "," << n.y() << "," << n.z()
-    //             << "\n";
-    //     }
-    // };
+    // PorePy CSV format:
+    std::ofstream out(cfg.output.disks_csv);
 
-    // dumpSet(entitySet1, 1);
-    // dumpSet(entitySet2, 2);
+    // Start with the domain.
+    // out << "DOMAIN_XMIN, DOMAIN_YMIN, DOMAIN_ZMIN, DOMAIN_XMAX, DOMAIN_YMAX, DOMAIN_ZMAX\n";
+    out << cfg.domain.xmin << "," << cfg.domain.ymin << "," << cfg.domain.zmin << ","
+        << cfg.domain.xmax << "," << cfg.domain.ymax << "," << cfg.domain.zmax << "\n";
+
+    // Now add the disks in the following format.
+    // out << "CENTER_X, CENTER_X, CENTER_Y, CENTER_Z, MAJOR_AXIS, MINOR_AXIS, MAJOR_AXIS_ANGLE, STRIKE_ANGLE, DIP_ANGLE
+
+    for (std::size_t i = 0; i < entitySets.size(); ++i)
+    {
+        const int family = families[i].familyIndex;
+        for (const auto &disk : entitySets[i])
+        {
+            const auto c = disk.center();
+            const auto n = disk.normal();
+            const auto maj = disk.majorAxis();
+            const auto min = disk.minorAxis();
+
+            Vec3 n3{n.x(), n.y(), n.z()};
+            Vec3 a3{maj.x(), maj.y(), maj.z()};
+
+            auto [major_axis_angle, strike_angle, dip_angle] = toPorePyAngles(a3, n3);
+
+            out << c.x() << "," << c.y() << "," << c.z() << ","
+                << disk.majorAxisLength() * 0.5 << ","
+                << disk.minorAxisLength() * 0.5 << ","
+                << major_axis_angle << "," << strike_angle << "," << dip_angle << "\n";
+        }
+    }
+
+    // Also write some metadata about the families to a separate file (optional, but can be useful for later reference)
+    std::ofstream meta_out(cfg.output.families_csv);
+    meta_out << "family_id,target_num,sampled_num\n";
+    for (std::size_t i = 0; i < entitySets.size(); ++i)
+    {
+        const auto &fam = families[i];
+        meta_out << fam.familyIndex << "," << fam.target_num << "," << entitySets[i].size() << "\n";
+    }
 
     // Write to monitor how many entities were sampled.
     for (std::size_t i = 0; i < entitySets.size(); ++i)
