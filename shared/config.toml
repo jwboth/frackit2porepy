@@ -28,6 +28,7 @@ num = 3
 target_num = 5 # number of fractures to sample for this family
 type = "disks" # "disks" or "quads"
 
+# All distributions here are normal distributions, defined by a mean and a standard deviation.
 [sampler.1.major_axis_length]
 mean = 50.0 # mean of the major axis length distribution
 stddev = 10.0 # standard deviation of the major axis length distribution
@@ -76,24 +77,20 @@ stddev = 7.5
 # Fracture family 2. Similar to family 1, but with different parameters.
 [sampler.3]
 target_num = 10
-type = "disks"
+type = "quads"
 
-[sampler.3.major_axis_length]
+[sampler.3.strike_deg]
 mean = 50.0
 stddev = 10.0
 
-[sampler.3.minor_axis_length]
-mean = 50.0
+[sampler.3.dip_deg]
+mean = 30.0
 stddev = 5.0
 
-[sampler.3.rotation_deg.x]
-mean = 20.0
-stddev = 7.5
+[sampler.3.strike_length]
+min = 40.0
+max = 60.0
 
-[sampler.3.rotation_deg.y]
-mean = -35.0
-stddev = 7.5
-
-[sampler.3.rotation_deg.z]
-mean = -20.0
-stddev = 7.5
+[sampler.3.dip_length]
+min = 25.0
+max = 35.0
