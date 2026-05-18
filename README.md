@@ -23,13 +23,13 @@ docker run --rm -v ".\shared:/frackit/shared" frackit2porepy:latest
 
 ### Line endings note
 
-If you see:
+If you see (in Windows):
 
 ```
 /usr/bin/env: ‘bash\r’: No such file or directory
 ```
 
-then `entrypoint.sh` has Windows CRLF line endings. Convert it to **LF** and rebuild.
+then some files may have CRLF line endings. Convert it to **LF** and rebuild.
 
 ## The `shared/` folder (runtime I/O contract)
 
@@ -64,6 +64,8 @@ Workflow: **edit inputs in `shared/` → run the container → read outputs from
   - `dip_angle`: rotation around the strike direction (radians)
 
 - `quads.csv` — **polygonal (point-based) fracture format** (domain line + one line per quad).
+  Intended to be loaded with:
+  `porepy.fracs.fracture_importer.network_from_csv(..., has_domain=True)`.
 
   Format (3D):
   - First line (domain): `X_MIN, Y_MIN, Z_MIN, X_MAX, Y_MAX, Z_MAX`
@@ -84,12 +86,14 @@ Workflow: **edit inputs in `shared/` → run the container → read outputs from
 
 The TOML file configures:
 
-1. **Domain** (`[domain]`)
+1. **Domain** (`[domain]`) and **Subdomain** (`[subdomain]`)
 2. **Constraints** (`[constraints]`)
 3. **A dynamic number of fracture families** (`[sampler] num = N` and `[sampler.i]` blocks)
 4. **Output paths** (`[output]`)
 
-### 1) Domain
+### 1) Domain and Subdomain
+
+The domain (3D box) has no influence on the workflow and is merely used as domain in the PorePy CSV file.
 
 ```toml
 [domain]
@@ -99,6 +103,18 @@ zmin = 0.0
 xmax = 100.0
 ymax = 100.0
 zmax = 100.0
+```
+
+The subdomain (3D box) defines the sampling box for points during fracture generation. PorePy will throw errors if fractures lie outside of the domain, such that the subdomain offers some control on fracture placement wrt. domains.
+
+```toml
+[subdomain]
+xmin = 25.0
+ymin = 25.0
+zmin = 25.0
+xmax = 50.0
+ymax = 50.0
+zmax = 50.0
 ```
 
 ### 2) Constraints
@@ -198,7 +214,6 @@ disks_csv = "disks.csv"
 quads_csv = "quads.csv"
 families_csv = "families.csv"
 ```
-
 Paths are interpreted relative to the working directory inside the container; the entrypoint copies known outputs back to `/frackit/shared`.
 
 ## PorePy integration
@@ -238,5 +253,5 @@ The `SinglePhaseFlowGeometry` class combines the imported geometry with PorePy's
 
 ### Known issues
 
-- If fractures intersect the domain boundary, the importer may fail. Ensure fractures are strictly interior (adjust `min_distance` in `config.toml`).
+- If fractures intersect the domain boundary, the importer may fail. Ensure fractures are strictly interior.
 - Requires PorePy with Gmsh ≥ 4.8 (OpenCascade ≥ 7.5 recommended for robust geometry handling).
