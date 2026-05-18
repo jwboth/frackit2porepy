@@ -80,10 +80,6 @@ Workflow: **edit inputs in `shared/` → run the container → read outputs from
 - `network.geo` — optional Gmsh geometry file for visualization.
 - `network.brep` — optional BREP file (if produced by the underlying workflow).
 
-## PorePy integration (placeholder)
-
-*(Placeholder — add a minimal Python example later showing how to load `disks.csv` and/or `quads.csv` into a PorePy fracture network, create a mesh, and set up a simulation.)*
-
 ## Configuration (`shared/config.toml`)
 
 The TOML file configures:
@@ -204,3 +200,43 @@ families_csv = "families.csv"
 ```
 
 Paths are interpreted relative to the working directory inside the container; the entrypoint copies known outputs back to `/frackit/shared`.
+
+## PorePy integration
+
+A minimal example script (`porepy_example.py`) is provided that:
+
+1. **Loads the fracture network** from `shared/disks.csv` (or `shared/quads.csv`) using PorePy's fracture importer.
+2. **Creates a mixed-dimensional grid** (fractures + matrix).
+3. **Runs a single-phase flow simulation** on the network.
+4. **Exports results** to Paraview format (`.vtu` files).
+
+### Usage
+
+PorePy needs to be installed in order to run the example. This repo and associated docker image do not come with a working PorePy version.
+
+### How it works
+
+The `ImportedGeometry` class reads the CSV:
+
+```python
+self.fracture_network = pp.fracture_importer.network_from_csv(
+    Path("shared/disks.csv"),
+    has_domain=True,
+    tol=expected_domain_size * 1e-6,
+)
+```
+
+The first line of `disks.csv` defines the domain; subsequent lines define elliptical fractures. For **polygonal fractures** from `quads.csv`, adapt the script similarly (PorePy also supports polygon import via `network_from_csv`).
+
+The `SinglePhaseFlowGeometry` class combines the imported geometry with PorePy's `SinglePhaseFlow` model. Running `pp.ModelRunner(model).run()` meshes, assembles, solves, and exports results.
+
+### Customization
+
+- **Mesh size:** Adjust `cell_size` and `cell_size_fracture` in the `meshing_arguments()` method.
+- **Physics model:** Replace `SinglePhaseFlow` with a different PorePy model (e.g., `BiotContactMechanics`) for coupled simulations.
+- **Boundary conditions & parameters:** Override `set_*` methods in the geometry/model class.
+
+### Known issues
+
+- If fractures intersect the domain boundary, the importer may fail. Ensure fractures are strictly interior (adjust `min_distance` in `config.toml`).
+- Requires PorePy with Gmsh ≥ 4.8 (OpenCascade ≥ 7.5 recommended for robust geometry handling).
