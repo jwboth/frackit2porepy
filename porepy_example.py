@@ -22,24 +22,29 @@ class ImportedGeometry:
 
     def set_fractures(self) -> None:
         self.create_fracture_network()
-        self._fractures = self.fracture_network.fractures
+        self._fractures = (
+            self.fracture_network.fractures # + self.quad_fracture_network.fractures
+        )
 
     def create_fracture_network(self) -> None:
         """Set the fracture network from the CSV geometry file."""
-        csv_geometry_file = Path("shared/disks.csv")
-        expected_domain_size = 1000
-        # TODO: read domain size from csv file (first line)
-
         self.fracture_network = pp.fracture_importer.network_from_csv(
-            csv_geometry_file,
+            Path("shared/disks.csv"),
             has_domain=True,
-            tol=expected_domain_size * 1e-6,
+            tol=1e-3,  # NOTE: Small wrt characteristic fracture/domain size.
         )
+        # self.quad_fracture_network = pp.fracture_importer.network_from_csv(
+        #     Path("shared/quads.csv"),
+        #     has_domain=False,
+        #     tol=1000,  # NOTE: Small wrt characteristic fracture/domain size.
+        # )
 
     def grid_type(self) -> str:
+        """Use simplex meshes to handle the complex geometry."""
         return "simplex"
 
     def meshing_arguments(self) -> dict:
+        """Assign coarse mesh size for the imported geometry."""
         mesh_args = {}
         mesh_args["cell_size"] = self.units.convert_units(100.0, "m")
         mesh_args["cell_size_fracture"] = self.units.convert_units(100.0, "m")
