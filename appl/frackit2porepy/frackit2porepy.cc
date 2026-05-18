@@ -658,8 +658,8 @@ int main(int argc, char **argv)
         auto [major_axis_angle, strike_angle, dip_angle] = toPorePyAngles(a3, n3);
 
         out_disks << c.x() << "," << c.y() << "," << c.z() << ","
-                  << disk->majorAxisLength() * 0.5 << ","
-                  << disk->minorAxisLength() * 0.5 << ","
+                  << disk->majorAxisLength() << ","
+                  << disk->minorAxisLength() << ","
                   << major_axis_angle << "," << strike_angle << "," << dip_angle << "\n";
     }
 
